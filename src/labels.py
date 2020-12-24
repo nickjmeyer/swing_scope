@@ -37,11 +37,11 @@ def dump_label_set(label_set: LabelSet):
 
         converted_label_set.label_set[str(path)] = converted_labels
 
-    return json.dumps(converted_label_set.json(), indent=4, sort_keys=True)
+    return converted_label_set.json(indent=4, sort_keys=True)
 
 
 def load_label_set(s: str):
-    label_set_raw = LabelSetSchema.parse_raw(json.loads(s))
+    label_set_raw = LabelSetSchema.parse_raw(s)
 
     feature_map = {}
     for f in Feature:
@@ -56,17 +56,6 @@ def load_label_set(s: str):
         label_set[Path(path)] = labels
 
     return label_set
-
-
-def main():
-    c = Coordinate(x=3, y=7)
-    labels = {Feature.Head: c}
-    label_set = {Path("."): labels}
-
-    print(dump_label_set(label_set))
-    print(load_label_set(dump_label_set(label_set)))
-
-
 
 
 if __name__ == "__main__":
