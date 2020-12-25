@@ -8,28 +8,34 @@ import labels
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
+
 Keys = {
-    ord("a"): labels.Feature.Head,
-    ord("s"): labels.Feature.Hips,
-    ord("d"): labels.Feature.Hands,
-    ord("f"): labels.Feature.LeftShoulder,
-    ord("g"): labels.Feature.RightShoulder,
+    ord("a"): labels.Pose.Head,
+    ord("s"): labels.Pose.Hips,
+    ord("d"): labels.Pose.Hands,
+    ord("f"): labels.Pose.LeftShoulder,
+    ord("g"): labels.Pose.RightShoulder,
     ord("w"): None,
 }
 
+
 Colors = {
-    labels.Feature.Head: (0, 255, 0),
-    labels.Feature.Hips: (255, 0, 0),
-    labels.Feature.Hands: (0, 0, 255),
-    labels.Feature.LeftShoulder: (120, 0, 120),
-    labels.Feature.RightShoulder: (0, 120, 120),
+    labels.Pose.Head: (0, 255, 0),
+    labels.Pose.Hips: (255, 0, 0),
+    labels.Pose.Hands: (0, 0, 255),
+    labels.Pose.LeftShoulder: (120, 0, 120),
+    labels.Pose.RightShoulder: (0, 120, 120),
     None: (180, 37, 123),
 }
 
 
+def default_labels():
+    return labels.Labels(pose={}, swing=labels.Swing.Other)
+
+
 @dataclasses.dataclass(frozen=False)
 class LabelManager:
-    feature: Optional[labels.Feature]
+    pose: Optional[labels.Pose]
     position: labels.Coordinate
     is_done: bool
     label_set: labels.LabelSet
@@ -37,8 +43,10 @@ class LabelManager:
     image_paths: List[Path]
     index: int
 
+
     def __init__(self, image_dir: Path):
-        self.feature = None
+        self.swing = labels.Swing.Start
+        self.pose = None
         self.position = labels.Coordinate(0, 0)
         self.is_done = False
         self.label_set = {}
@@ -73,13 +81,18 @@ class LabelManager:
         frame = cv2.imread(str(path), cv2.IMREAD_COLOR)
         circle_size = 5
 
+        current_labels = self.label_set.get(path, default_labels())
+
+        # Pose being labeled
         cv2.putText(frame,
-                    "<None>" if self.feature is None else self.feature.name,
+                    "<None>" if self.pose is None else self.pose.name,
                     (10, 30),
                     cv2.FONT_HERSHEY_SIMPLEX,
                     1,
-                    Colors[self.feature],
+                    Colors[self.pose],
                     2)
+
+        # Frame counter
         cv2.putText(frame,
                     f"{self.index} / {len(self.image_paths)}",
                     (10, 60),
@@ -88,7 +101,17 @@ class LabelManager:
                     (255, 255, 255),
                     2)
 
-        for f, c in self.label_set.get(path, {}).items():
+        # Swing stage
+        cv2.putText(frame,
+                    f"{current_labels.swing.name} ({self.swing.name})",
+                    (10, 90),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    1,
+                    (255, 255, 255),
+                    2)
+
+
+        for f, c in current_labels.pose.items():
             cv2.circle(frame,
                        (c.x, c.y),
                        circle_size,
@@ -113,15 +136,16 @@ class LabelManager:
     def key_press(self, key):
         if key in Keys:
             print("switch")
-            self.feature = Keys[key]
+            self.pose = Keys[key]
 
             self.render()
 
         elif key == ord(" "):
             print("register")
-            if self.feature is not None:
+            if self.pose is not None:
                 path = self.image_paths[self.index]
-                self.label_set.setdefault(path, {})[self.feature] = self.position
+                current_labels = self.label_set.setdefault(path, default_labels())
+                current_labels.pose[self.pose] = self.position
 
             self.next()
 
@@ -129,11 +153,32 @@ class LabelManager:
         elif key == 8: # backspace
             print("backspace")
             path = self.image_paths[self.index]
-            labels = self.label_set.setdefault(path, {})
-            if self.feature in labels:
-                del labels[self.feature]
+            current_labels = self.label_set.setdefault(path, default_labels())
+            if self.pose in current_labels.pose:
+                del current_labels.pose[self.pose]
 
             self.prev()
+
+
+        elif key == ord("j"):
+            path = self.image_paths[self.index]
+            current_labels = self.label_set.setdefault(path, default_labels())
+            current_labels.swing = self.swing
+
+            # Bump to next swing state
+            self.swing = labels.Swing(self.swing.value + 1)
+            if self.swing == labels.Swing.Other:
+                self.swing = labels.Swing.Start
+
+            self.render()
+
+
+        elif key == ord("l"):
+            path = self.image_paths[self.index]
+            current_labels = self.label_set.setdefault(path, default_labels())
+            current_labels.swing = labels.Swing.Other
+
+            self.render()
 
 
         elif key == ord("q"):
@@ -147,7 +192,7 @@ class LabelManager:
             print("prev")
             self.prev()
 
-        elif key == ord("x"): # right arrow
+        elif key == ord("x") or key == ord("k"):
             print("next")
             self.next()
 
@@ -163,7 +208,7 @@ def main(directory):
 
     files = list(directory.glob("*.jpg"))
 
-    features = ["head", "hips", "hands", "left shoulder", "right shoulder"]
+    poses = ["head", "hips", "hands", "left shoulder", "right shoulder"]
     keys = ["a", "s", "d", "f", "g"]
 
     cv2.namedWindow("image")
